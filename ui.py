@@ -5,6 +5,7 @@ import random
 import string
 import json
 import requests
+import webbrowser
 
 BG_COLOR = "#1e1e1e"
 FRAME_COLOR = "#2d2d2d"
@@ -21,55 +22,52 @@ class PasswordManagerUI:
     def __init__(self, root):
 
         self.root = root
-        self.root.title("Password Manager")
+        self.root.title("Password Vault")
         self.root.geometry("650x450")
         self.root.configure(bg=BG_COLOR)
 
+        self.login_window = None
+
         self.create_menu()
-        self.create_login()
         self.create_widgets()
+
+        self.root.after(100, self.create_login)
 
         self.lock_timer = self.root.after(300000, self.auto_lock)
 
         self.root.bind_all("<Key>", lambda e: self.reset_timer())
         self.root.bind_all("<Button>", lambda e: self.reset_timer())
 
-        self.check_for_updates()
         
+
+
     def check_for_updates(self):
 
         try:
 
-            url = "https://raw.githubusercontent.com/YOURNAME/password-vault/main/version.txt"
+            from main import APP_VERSION
+
+            url = "https://raw.githubusercontent.com/masterofedm/password-vault/main/version.txt"
 
             response = requests.get(url, timeout=5)
 
-            latest_version = response.text.strip()
+            if response.status_code != 200:
+                return
 
-            from main import APP_VERSION
+            latest_version = response.text.strip()
 
             if latest_version > APP_VERSION:
 
-                from tkinter import messagebox
-
                 if messagebox.askyesno(
                     "Update Available",
-                    f"A new version ({latest_version}) is available.\nOpen download page?"
+                    f"A new version ({latest_version}) is available.\nOpen download page?",
+                    parent=self.root
                 ):
-
-                    import webbrowser
-                    webbrowser.open("https://github.com/YOURNAME/password-vault/releases")
+                    webbrowser.open("https://github.com/masterofedm/password-vault/releases")
 
         except:
             pass
 
-    def lock_vault(self):
-
-        self.root.withdraw()
-
-        messagebox.showinfo("Vault Locked", "Vault has been locked.")
-
-        self.create_login()
 
     def create_menu(self):
 
@@ -87,28 +85,49 @@ class PasswordManagerUI:
 
     def create_login(self):
 
+        if self.login_window is not None:
+            return
+
         self.root.withdraw()
 
-        login = tk.Toplevel()
-        login.title("Unlock Vault")
-        login.geometry("300x150")
-        login.configure(bg=BG_COLOR)
+        self.login_window = tk.Toplevel(self.root)
+        self.login_window.title("Unlock Vault")
+        self.login_window.geometry("300x150")
+        self.login_window.configure(bg=BG_COLOR)
 
-        tk.Label(login, text="Enter Master Password", bg=BG_COLOR, fg=TEXT_COLOR).pack(pady=10)
+        tk.Label(
+            self.login_window,
+            text="Enter Master Password",
+            bg=BG_COLOR,
+            fg=TEXT_COLOR
+        ).pack(pady=10)
 
-        entry = tk.Entry(login, show="*", bg=ENTRY_COLOR, fg=TEXT_COLOR, insertbackground="white")
+        entry = tk.Entry(
+            self.login_window,
+            show="*",
+            bg=ENTRY_COLOR,
+            fg=TEXT_COLOR,
+            insertbackground="white"
+        )
         entry.pack()
 
         def check():
 
             if entry.get() == MASTER_PASSWORD:
-                login.destroy()
+                self.login_window.destroy()
+                self.login_window = None
                 self.root.deiconify()
                 self.load_passwords()
             else:
                 messagebox.showerror("Error", "Incorrect password")
 
-        tk.Button(login, text="Unlock", command=check, bg=BUTTON_COLOR, fg=BUTTON_TEXT).pack(pady=10)
+        tk.Button(
+            self.login_window,
+            text="Unlock",
+            command=check,
+            bg=BUTTON_COLOR,
+            fg=BUTTON_TEXT
+        ).pack(pady=10)
 
 
     def create_widgets(self):
@@ -133,11 +152,8 @@ class PasswordManagerUI:
 
         self.password.bind("<KeyRelease>", self.update_strength)
 
-        self.strength_label = tk.Label(frame, text="Strength:", bg=FRAME_COLOR, fg="white")
-        self.strength_label.grid(row=2, column=3, padx=5)
-
         self.strength_bar = tk.Frame(frame, bg="#444", width=150, height=12)
-        self.strength_bar.grid(row=2, column=4, padx=5)
+        self.strength_bar.grid(row=2, column=3, padx=5)
 
         self.strength_fill = tk.Frame(self.strength_bar, bg="red", width=0, height=12)
         self.strength_fill.pack(side="left", fill="y")
@@ -193,18 +209,18 @@ class PasswordManagerUI:
             score += 1
 
         if score <= 2:
-            return "Weak", "red", 40
+            return 40, "red"
         elif score <= 4:
-            return "Medium", "orange", 90
+            return 90, "orange"
         else:
-            return "Strong", "green", 150
+            return 150, "green"
 
 
     def update_strength(self, event=None):
 
         password = self.password.get()
 
-        strength, color, width = self.check_strength(password)
+        width, color = self.check_strength(password)
 
         self.strength_fill.config(bg=color, width=width)
 
@@ -282,7 +298,6 @@ class PasswordManagerUI:
         self.password.delete(0, tk.END)
         self.password.insert(0, password)
 
-        # update strength bar
         self.update_strength()
 
 
@@ -313,6 +328,13 @@ class PasswordManagerUI:
                 json.dump(data, f, indent=4)
 
             messagebox.showinfo("Backup Created", "Backup saved successfully")
+
+
+    def lock_vault(self):
+
+        self.root.withdraw()
+        messagebox.showinfo("Vault Locked", "Vault has been locked.")
+        self.create_login()
 
 
     def auto_lock(self):
