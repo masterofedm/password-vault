@@ -8,7 +8,7 @@ del main.spec
 
 echo Building executable...
 
-pyinstaller --onefile --windowed --clean main.py
+pyinstaller --onefile --windowed --icon=vault_icon.ico --clean main.py
 
 echo Build complete!
 

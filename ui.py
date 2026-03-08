@@ -1,11 +1,13 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 from database import add_password, get_passwords, delete_password, search_password
 import random
 import string
 import json
+import os
 import requests
 import webbrowser
+from twofa import generate_secret, verify_totp, provisioning_uri
 
 BG_COLOR = "#1e1e1e"
 FRAME_COLOR = "#2d2d2d"
@@ -15,6 +17,7 @@ BUTTON_COLOR = "#007acc"
 BUTTON_TEXT = "#ffffff"
 
 MASTER_PASSWORD = "admin123"
+SETTINGS_FILE = "vault_settings.json"
 
 
 class PasswordManagerUI:
@@ -27,6 +30,7 @@ class PasswordManagerUI:
         self.root.configure(bg=BG_COLOR)
 
         self.login_window = None
+        self.settings = self.load_settings()
 
         self.create_menu()
         self.create_widgets()
@@ -80,7 +84,82 @@ class PasswordManagerUI:
 
         menu_bar.add_cascade(label="File", menu=file_menu)
 
+        security_menu = tk.Menu(menu_bar, tearoff=0)
+        security_menu.add_command(label="Enable Duo Mobile 2FA", command=self.enable_twofa)
+        security_menu.add_command(label="Disable Duo Mobile 2FA", command=self.disable_twofa)
+
+        menu_bar.add_cascade(label="Security", menu=security_menu)
+
         self.root.config(menu=menu_bar)
+
+
+    def load_settings(self):
+
+        defaults = {
+            "twofa_enabled": False,
+            "twofa_secret": ""
+        }
+
+        if not os.path.exists(SETTINGS_FILE):
+            return defaults
+
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+
+            defaults.update(loaded)
+            return defaults
+
+        except (json.JSONDecodeError, OSError):
+            return defaults
+
+
+    def save_settings(self):
+
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.settings, f, indent=2)
+
+
+    def enable_twofa(self):
+
+        if self.settings.get("twofa_enabled"):
+            messagebox.showinfo("2FA", "Duo Mobile 2FA is already enabled.")
+            return
+
+        secret = generate_secret()
+        self.settings["twofa_secret"] = secret
+        self.settings["twofa_enabled"] = True
+        self.save_settings()
+
+        uri = provisioning_uri(secret, "vault-user", "PasswordVault")
+
+        self.root.clipboard_clear()
+        self.root.clipboard_append(secret)
+
+        messagebox.showinfo(
+            "Duo Mobile 2FA Enabled",
+            "2FA is now enabled.\n\n"
+            "Open Duo Mobile, add a Third-Party Account, and use this secret:\n"
+            f"{secret}\n\n"
+            "The secret has been copied to your clipboard.\n"
+            "If your app supports URI import, use:\n"
+            f"{uri}"
+        )
+
+
+    def disable_twofa(self):
+
+        if not self.settings.get("twofa_enabled"):
+            messagebox.showinfo("2FA", "Duo Mobile 2FA is already disabled.")
+            return
+
+        if not messagebox.askyesno("Disable 2FA", "Disable Duo Mobile 2FA for vault login?"):
+            return
+
+        self.settings["twofa_enabled"] = False
+        self.settings["twofa_secret"] = ""
+        self.save_settings()
+        messagebox.showinfo("2FA", "Duo Mobile 2FA has been disabled.")
 
 
     def create_login(self):
@@ -113,13 +192,25 @@ class PasswordManagerUI:
 
         def check():
 
-            if entry.get() == MASTER_PASSWORD:
-                self.login_window.destroy()
-                self.login_window = None
-                self.root.deiconify()
-                self.load_passwords()
-            else:
+            if entry.get() != MASTER_PASSWORD:
                 messagebox.showerror("Error", "Incorrect password")
+                return
+
+            if self.settings.get("twofa_enabled"):
+                code = simpledialog.askstring(
+                    "Duo Mobile Verification",
+                    "Enter the 6-digit code from Duo Mobile:",
+                    parent=self.login_window
+                )
+
+                if not verify_totp(self.settings.get("twofa_secret", ""), code):
+                    messagebox.showerror("Error", "Invalid 2FA code")
+                    return
+
+            self.login_window.destroy()
+            self.login_window = None
+            self.root.deiconify()
+            self.load_passwords()
 
         tk.Button(
             self.login_window,

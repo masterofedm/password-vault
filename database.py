@@ -1,8 +1,24 @@
 import sqlite3
+import os
+
 from encryption import encrypt_password, decrypt_password
 
-conn = sqlite3.connect("passwords.db")
+
+def get_db_path():
+
+    base_path = os.path.join(
+        os.getenv("LOCALAPPDATA"),
+        "PasswordVault"
+    )
+
+    os.makedirs(base_path, exist_ok=True)
+
+    return os.path.join(base_path, "passwords.db")
+
+
+conn = sqlite3.connect(get_db_path())
 cursor = conn.cursor()
+
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS passwords (
