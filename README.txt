@@ -13,7 +13,3 @@ This app can
 
 ---will provide future updates to hopefully bring this to phones and make it look more professional on desktop---
 
-
-*Unzip file to desktop*
-*Run PasswordVault.exe*
-*Enter in main password*
